@@ -1,0 +1,9 @@
+{
+  "network": "Arc Mainnet",
+  "chain_id": 5042,
+  "contract": "0x02778880fbbad082ec9a654ae521562ebe8acf83",
+  "deploy_tx": "0x7b0258ad900f114c4cc53a04b2f1090bea773e8c5115dde095d9921e4e4c46c9",
+  "price_wei": "1000000000000000",
+  "deployer": "0x759Cf1362db92Be95f7011aB8ff1D2A2D821e67c",
+  "explorer": "https://explorer.arc.io/address/0x02778880fbbad082ec9a654ae521562ebe8acf83"
+}

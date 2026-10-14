@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arc Pay-per-Query: data for AI agents, settled in USDC</title>
+<meta name="description" content="An HTTP 402 data API where each query is paid on Arc in native USDC, with USDC as gas. No API keys or accounts, and no second token.">
+<style>
+  :root { --bg:#0b0f17; --panel:#121826; --line:#243048; --ink:#e7ecf5; --dim:#93a1bb; --acc:#4f8cff; --ok:#37c48b; --bad:#ff6b6b; }
+  * { box-sizing:border-box }
+  body { margin:0; font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink) }
+  main { max-width:920px; margin:0 auto; padding:36px 20px 64px }
+  h1 { font-size:28px; margin:0 0 6px } h2 { font-size:17px; margin:0 0 12px }
+  p.lead { color:var(--dim); margin:0 0 26px; max-width:720px }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin-bottom:16px }
+  .step { display:flex; gap:12px; align-items:baseline } .n { color:var(--acc); font-weight:700; min-width:22px }
+  label { color:var(--dim); font-size:13px; display:block; margin-bottom:4px }
+  input, select { background:#0b1220; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; width:100% }
+  .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 16px; font:inherit; font-weight:600; cursor:pointer }
+  button:disabled { opacity:.45; cursor:not-allowed } button.ghost { background:transparent; border:1px solid var(--line); color:var(--ink) }
+  pre { background:#0b1220; border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; font-size:12.5px; margin:10px 0 0; white-space:pre-wrap; word-break:break-all }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+  .pill { font-size:12px; padding:2px 8px; border-radius:99px; border:1px solid var(--line); color:var(--dim) }
+  .ok { color:var(--ok) } .bad { color:var(--bad) } a { color:var(--acc) }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:10px } th,td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line) } th { color:var(--dim); font-weight:600 }
+  @media (max-width:700px) { .grid { grid-template-columns:1fr 1fr } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Pay-per-query data for AI agents, settled on Arc</h1>
+  <p class="lead">Each API call costs <b id="price">0.001</b> USDC and is paid on-chain on <b id="net">Arc</b>, where USDC is also the gas token, so an agent needs one asset and no account. The API answers <code>402 Payment Required</code> with the exact transaction to send. The agent pays, retries with the tx hash, and the server checks the receipt on Arc before returning the data. The dataset is official state WARN Act layoff notices (TX TWC and CA EDD).</p>
+
+  <div class="panel">
+    <h2>0 · API endpoint</h2>
+    <div class="row"><input id="api" style="flex:1"><button class="ghost" id="load">Load</button><span class="pill" id="netinfo">not loaded</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>1 · Ask for data (unpaid → 402)</h2>
+    <div class="grid">
+      <div><label>state</label><select id="state"><option>TX</option><option>CA</option><option value="">any</option></select></div>
+      <div><label>min_employees</label><input id="min" value="100"></div>
+      <div><label>since (YYYY-MM-DD)</label><input id="since" placeholder="optional"></div>
+      <div><label>limit (1–25)</label><input id="limit" value="5"></div>
+    </div>
+    <button id="quote">Request</button>
+    <pre id="quoteOut" hidden></pre>
+  </div>
+
+  <div class="panel">
+    <h2>2 · Pay on Arc (one transaction, gas in USDC)</h2>
+    <div class="row"><button id="connect" class="ghost">Connect wallet</button><button id="pay" disabled>Pay &amp; fetch</button><span id="acct" class="pill">no wallet</span></div>
+    <p style="color:var(--dim);font-size:13px;margin:10px 0 0">No wallet? Paste the hash of any existing <code>pay()</code> transaction for this exact query below. Agents do the same with <code>curl -H "X-Payment-Tx: 0x…"</code>.</p>
+    <div class="row" style="margin-top:8px"><input id="txin" placeholder="0x… payment tx hash" style="flex:1"><button class="ghost" id="useTx">Fetch with this tx</button></div>
+    <pre id="payOut" hidden></pre>
+  </div>
+
+  <div class="panel">
+    <h2>3 · Data returned after on-chain verification</h2>
+    <div id="result" style="color:var(--dim)">Nothing yet.</div>
+  </div>
+
+  <p style="color:var(--dim);font-size:12.5px">Contract: <span id="contract">—</span> · Source and tests: see repository README · Records are public-record factual data from the Texas Workforce Commission and the California EDD.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const DEFAULT_API = location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:8787";
+// The API base is pinned to this page's origin (or a local dev server). A link can't point the page at a
+// third-party API, which could otherwise inject markup or quote a payment to someone else's address.
+function trustedApi(u) {
+  try { const x = new URL(u); return x.origin === location.origin || ["127.0.0.1", "localhost"].includes(x.hostname); }
+  catch (e) { return false; }
+}
+const requestedApi = new URLSearchParams(location.search).get("api");
+$("api").value = requestedApi && trustedApi(requestedApi) ? requestedApi : DEFAULT_API;
+const MAX_PAY_WEI = 10n ** 16n; // 0.01 USDC: refuse any quote above 10x the listed price
+let cfg = null, quote = null, account = null;
+
+function show(el, obj) { el.hidden = false; el.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2); }
+function nonce() { return "web-" + crypto.getRandomValues(new Uint32Array(2)).join("").slice(0, 16); }
+function queryUrl() {
+  const p = new URLSearchParams();
+  if ($("state").value) p.set("state", $("state").value);
+  if ($("min").value) p.set("min_employees", $("min").value);
+  if ($("since").value) p.set("since", $("since").value);
+  if ($("limit").value) p.set("limit", $("limit").value);
+  p.set("nonce", quote?.nonce || nonce());
+  return { url: `${$("api").value}/v1/warn?${p}`, nonce: p.get("nonce") };
+}
+
+async function load() {
+  try {
+    cfg = await (await fetch(`${$("api").value}/v1`)).json();
+    $("price").textContent = cfg.price_usdc; $("net").textContent = cfg.network;
+    $("netinfo").textContent = `${cfg.network} · chain ${cfg.chain_id} · ${cfg.records} records`; $("netinfo").className = "pill ok";
+    $("contract").textContent = cfg.contract;
+  } catch (e) { $("netinfo").textContent = "API unreachable"; $("netinfo").className = "pill bad"; }
+}
+
+$("load").onclick = load;
+$("quote").onclick = async () => {
+  quote = null;
+  const q = queryUrl();
+  const r = await fetch(q.url); const body = await r.json();
+  quote = { ...q, status: r.status, body };
+  show($("quoteOut"), `HTTP ${r.status}\n` + JSON.stringify(body, null, 2));
+  $("pay").disabled = !(account && r.status === 402);
+};
+
+$("connect").onclick = async () => {
+  if (!window.ethereum) { $("acct").textContent = "no injected wallet found"; return; }
+  if (!cfg) await load();
+  [account] = await ethereum.request({ method: "eth_requestAccounts" });
+  const hex = "0x" + cfg.chain_id.toString(16);
+  try { await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] }); }
+  catch (e) {
+    await ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: hex, chainName: cfg.network,
+      nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: [quote?.body?.payment?.rpc_url || (cfg.chain_id === 5042 ? "https://rpc.mainnet.arc.io" : "https://rpc.testnet.arc.io")],
+      blockExplorerUrls: [cfg.chain_id === 5042 ? "https://explorer.arc.io" : "https://explorer.testnet.arc.io"] }] });
+  }
+  $("acct").textContent = account.slice(0, 6) + "…" + account.slice(-4); $("acct").className = "pill ok";
+  $("pay").disabled = !(quote && quote.status === 402);
+};
+
+async function fetchWithTx(tx) {
+  const r = await fetch(quote.url, { headers: { "x-payment-tx": tx } }); const body = await r.json();
+  if (r.status !== 200) { $("result").innerHTML = `<span class="bad">HTTP ${esc(r.status)}: ${esc(body.reason || body.error)}</span>`; return; }
+  const p = body.payment;
+  const link = /^https:\/\/explorer(\.testnet)?\.arc\.io\/tx\/0x[0-9a-fA-F]{64}$/.test(String(p.explorer))
+    ? ` <a href="${esc(p.explorer)}" target="_blank" rel="noopener">View tx</a>` : "";
+  $("result").innerHTML = `<div class="ok">Verified on-chain: receipt #${esc(p.receipt_id)}, ${esc(p.amount_usdc)} USDC from ${esc(String(p.payer).slice(0,8))}…, block ${esc(p.block)}.${link}</div>
+    <div style="color:var(--dim);font-size:13px;margin-top:4px">${esc(body.total_matches)} matching notices; showing ${esc(body.notices.length)}</div>
+    <table><tr><th>Notice date</th><th>Company</th><th>Location</th><th>Employees</th><th>Effective</th></tr>
+    ${body.notices.map(n => `<tr><td>${esc(n.notice_date)}</td><td>${esc(n.company)}</td><td>${esc(n.county)}, ${esc(n.state)}</td><td>${esc(n.employees)}</td><td>${esc(n.effective_date)}</td></tr>`).join("")}</table>`;
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+$("pay").onclick = async () => {
+  const t = quote.body.payment.tx;
+  // Only ever sign a pay(bytes32) call to the contract this origin's API advertises, for at most MAX_PAY_WEI.
+  const okQuote = trustedApi($("api").value) && cfg && t && typeof t.to === "string"
+    && t.to.toLowerCase() === String(cfg.contract).toLowerCase()
+    && /^0x8609cad1[0-9a-fA-F]{64}$/.test(String(t.data)) && BigInt(t.value) <= MAX_PAY_WEI;
+  if (!okQuote) { show($("payOut"), "refused: the quoted transaction does not match this site's contract and price"); return; }
+  $("pay").disabled = true;
+  try {
+    const tx = await ethereum.request({ method: "eth_sendTransaction", params: [{ from: account, to: t.to, value: t.value, data: t.data }] });
+    show($("payOut"), `sent ${tx}\nwaiting for receipt (Arc finality < 1s)…`);
+    for (let i = 0; i < 40; i++) {
+      const rc = await ethereum.request({ method: "eth_getTransactionReceipt", params: [tx] });
+      if (rc) { show($("payOut"), `tx ${tx}\nstatus ${rc.status}, block ${parseInt(rc.blockNumber, 16)}`); break; }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    $("txin").value = tx; await fetchWithTx(tx);
+  } catch (e) { show($("payOut"), "payment failed: " + (e.message || e)); $("pay").disabled = false; }
+};
+$("useTx").onclick = async () => { if (!quote) { alert("Request a query first (step 1). The tx must pay for that exact query."); return; } await fetchWithTx($("txin").value.trim()); };
+
+// Deep link for reviewers without a wallet: ?state=TX&min_employees=100&limit=3&nonce=…&tx=0x…
+// replays a real on-chain payment for that exact query, and the server re-verifies it live.
+(async () => {
+  await load();
+  const s = new URLSearchParams(location.search);
+  if (!s.get("tx") || !s.get("nonce")) return;
+  $("state").value = s.get("state") ?? ""; $("min").value = s.get("min_employees") ?? "";
+  $("since").value = s.get("since") ?? ""; $("limit").value = s.get("limit") ?? "";
+  quote = { nonce: s.get("nonce") }; Object.assign(quote, queryUrl());
+  $("txin").value = s.get("tx");
+  show($("quoteOut"), `replaying paid query:\n${quote.url}`);
+  await fetchWithTx(s.get("tx"));
+})();
+</script>
+</body>
+</html>

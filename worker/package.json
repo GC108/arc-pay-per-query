@@ -1,0 +1,16 @@
+{
+  "name": "arc-pay-per-query-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --env testnet",
+    "test": "node --test test/unit.test.mjs",
+    "e2e": "node test/e2e.mjs"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

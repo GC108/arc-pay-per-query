@@ -1,0 +1,12 @@
+out/
+cache/
+broadcast/*/31337/
+node_modules/
+.wrangler/
+.env
+*.env
+deployments/gate-31337.json
+deployments/deeplink-31337.txt
+
+# internal submission notes (not part of the public repo)
+SUBMISSION.md

@@ -1,0 +1,35 @@
+# Cloudflare Worker config. NOT deployed by the build agent; deploy is an operator-gated step.
+name = "arc-pay-per-query"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# The demo page (web/) is served as static assets; /v1/* falls through to the Worker.
+[assets]
+directory = "../web"
+
+# Default vars = Arc Testnet (local dev: `npx wrangler dev`)
+[vars]
+NETWORK_NAME = "Arc Testnet"
+CHAIN_ID = "5042002"
+RPC_URL = "https://rpc.testnet.arc.io"
+EXPLORER_URL = "https://explorer.testnet.arc.io"
+CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000" # set by scripts/e2e.sh testnet
+PRICE_WEI = "1000000000000000" # 0.001 USDC (native USDC = 18 decimals)
+PAYMENT_TTL_SECONDS = "86400"
+
+[env.mainnet]
+name = "arc-pay-per-query-mainnet"
+workers_dev = false
+routes = [
+  { pattern = "arcpayperquery.com", custom_domain = true },
+  { pattern = "www.arcpayperquery.com", custom_domain = true },
+]
+[env.mainnet.vars]
+NETWORK_NAME = "Arc Mainnet"
+CHAIN_ID = "5042"
+RPC_URL = "https://rpc.mainnet.arc.io"
+EXPLORER_URL = "https://explorer.arc.io"
+CONTRACT_ADDRESS = "0x02778880fbbad082ec9a654ae521562ebe8acf83" # set by scripts/deploy-mainnet.sh
+PRICE_WEI = "1000000000000000"
+PAYMENT_TTL_SECONDS = "2592000" # 30 days: keeps the demo deep-link verifiable through grant review

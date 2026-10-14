@@ -1,0 +1,57 @@
+{
+  "gate": "PASS",
+  "at": "2026-10-14T02:12:00.441Z",
+  "network": "Arc Mainnet",
+  "chain_id": "5042",
+  "contract": "0x02778880fbbad082ec9a654ae521562ebe8acf83",
+  "payment_tx": "0x69b5b0e38031fa65eaccb75bbea4337df26e719fa7b03a44b68682cdf0fcf4da",
+  "payment_explorer": "https://explorer.arc.io/tx/0x69b5b0e38031fa65eaccb75bbea4337df26e719fa7b03a44b68682cdf0fcf4da",
+  "sample_record": {
+    "state": "TX",
+    "company": "Fifth Third Bank",
+    "county": "Denton County",
+    "address": "Frisco, TX",
+    "employees": 115,
+    "notice_date": "2026-07-10",
+    "effective_date": "2026-09-11",
+    "type": "Layoff/Closure (see notice)",
+    "industry": "North Central Texas WDA"
+  },
+  "checks": [
+    {
+      "name": "unpaid request returns 402",
+      "pass": true,
+      "detail": "no X-Payment-Tx header"
+    },
+    {
+      "name": "402 carries pay(bytes32) calldata bound to the query",
+      "pass": true,
+      "detail": "GET /v1/warn?state=TX&min_employees=100&limit=3&nonce=e2e-db2f6a9ba3d46fc4"
+    },
+    {
+      "name": "paid request returns 200 with data",
+      "pass": true,
+      "detail": "3 notices, payer 0x759cf1362db92be95f7011ab8ff1d2a2d821e67c, receipt #1"
+    },
+    {
+      "name": "fake tx hash rejected (402)",
+      "pass": true,
+      "detail": "transaction not found on this chain"
+    },
+    {
+      "name": "payment for query A rejected for query B (402)",
+      "pass": true,
+      "detail": "transaction contains no QueryPaid event for this query on this contract"
+    },
+    {
+      "name": "non-payment tx rejected (402)",
+      "pass": true,
+      "detail": "transaction contains no QueryPaid event for this query on this contract"
+    },
+    {
+      "name": "valid payment with tampered params rejected (402)",
+      "pass": true,
+      "detail": "transaction contains no QueryPaid event for this query on this contract"
+    }
+  ]
+}
